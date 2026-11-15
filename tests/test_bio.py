@@ -223,6 +223,14 @@ class ParseAndCompareTests(unittest.TestCase):
         with self.assertRaises(CheckError):
             parse(data)
 
+    def test_record_missing_sample_column_rejected(self):
+        # 表头 10 列但数据行只有 9 列（缺样本列）
+        data = ("##fileformat=VCFv4.2\n"
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n"
+                "chrT\t2\t.\tC\tG\t.\t.\t.\tGT\n")
+        with self.assertRaises(CheckError):
+            parse(data)
+
     def test_format_with_gt_plus_other_fields_ok(self):
         data = vcf(["chrT\t2\t.\tC\tG\t.\t.\t.\tGT:DP\t0/1:30"])
         _, calls = parse(data)

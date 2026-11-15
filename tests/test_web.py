@@ -148,5 +148,151 @@ class WebTests(unittest.TestCase):
         self.assertFalse(resp.json()["ok"])
 
 
+# --------------------------------------------------------------------------- #
+# 家系分相核查（/trio）
+# --------------------------------------------------------------------------- #
+TRIO_HEADER = (
+    "##fileformat=VCFv4.2\n"
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
+)
+
+
+def trio_vcf(sample, rows):
+    return (TRIO_HEADER + sample + "\n" + "".join(r + "\n" for r in rows)).encode()
+
+
+# 参考 ACGTAAAACGTT：父 pos2/pos3 杂合、母 pos2/pos3 杂合、子代与之一致；
+# 母源 hap1→hap1 不切换，父源 hap0→hap1 必然切换，最小总次数 1。
+FATHER = trio_vcf("FATHER", [
+    "chrT\t2\t.\tC\tG\t.\tPASS\t.\tGT:PS\t0|1:11",
+    "chrT\t3\t.\tG\tA\t.\tPASS\t.\tGT:PS\t0|1:11",
+])
+MOTHER = trio_vcf("MOTHER", [
+    "chrT\t2\t.\tC\tT\t.\tPASS\t.\tGT:PS\t0|1:22",
+    "chrT\t3\t.\tG\tT\t.\tPASS\t.\tGT:PS\t1|0:22",
+])
+CHILD = trio_vcf("CHILD", [
+    "chrT\t2\t.\tC\tT\t.\tPASS\t.\tGT:PS\t1|0:33",
+    "chrT\t3\t.\tG\tA\t.\tPASS\t.\tGT:PS\t0|1:33",
+])
+
+
+def trio_upload(fasta=FASTA, father=FATHER, mother=MOTHER, child=CHILD):
+    return client.post(
+        "/trio/check",
+        files={
+            "fasta": ("ref.fa", fasta, "text/plain"),
+            "vcf_father": ("father.vcf", father, "text/plain"),
+            "vcf_mother": ("mother.vcf", mother, "text/plain"),
+            "vcf_child": ("child.vcf", child, "text/plain"),
+        },
+    )
+
+
+class TrioWebTests(unittest.TestCase):
+    def test_trio_index_renders(self):
+        resp = client.get("/trio")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("家系分相核查".encode(), resp.content)
+
+    def test_index_links_to_trio(self):
+        resp = client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"/trio", resp.content)
+
+    def test_trio_happy_path(self):
+        resp = trio_upload()
+        self.assertEqual(resp.status_code, 200)
+        body = resp.text
+        self.assertIn("核查概览", body)
+        self.assertIn("最小切换总次数", body)
+        self.assertIn("FATHER", body)
+        self.assertIn("MOTHER", body)
+        self.assertIn("CHILD", body)
+        self.assertIn("POS 2 → POS 3", body)
+        # 父源切换必然、母源不发生；本场景没有“可能”徽章（图例外）
+        self.assertIn('class="verdict v-must"', body)
+        self.assertIn('class="verdict v-never"', body)
+        self.assertNotIn('class="verdict v-maybe"', body)
+
+    def test_trio_mendelian_failure_shows_error_only(self):
+        bad_child = trio_vcf("CHILD", [
+            "chrT\t2\t.\tC\tT\t.\tPASS\t.\tGT:PS\t1|0:33",  # 母源 T，母亲未记录（C/C）
+        ])
+        resp = trio_upload(father=trio_vcf("F", []), mother=trio_vcf("M", []), child=bad_child)
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("核查失败", resp.text)
+        self.assertIn("无法来自母亲", resp.text)
+        self.assertNotIn("核查概览", resp.text)
+
+    def test_trio_ps_inconsistent_rejected(self):
+        bad_father = trio_vcf("F", [
+            "chrT\t2\t.\tC\tG\t.\tPASS\t.\tGT:PS\t0|1:11",
+            "chrT\t3\t.\tG\tA\t.\tPASS\t.\tGT:PS\t0|1:99",
+        ])
+        resp = trio_upload(father=bad_father)
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("PS 不一致", resp.text)
+
+    def test_trio_unphased_gt_rejected(self):
+        bad_child = trio_vcf("C", ["chrT\t2\t.\tC\tT\t.\tPASS\t.\tGT:PS\t0/1:33"])
+        resp = trio_upload(child=bad_child)
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("分相", resp.text)
+
+    def test_trio_ref_mismatch_rejected(self):
+        bad_mother = trio_vcf("M", ["chrT\t2\t.\tG\tT\t.\tPASS\t.\tGT:PS\t0|1:22"])
+        resp = trio_upload(mother=bad_mother)
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("REF", resp.text)
+        self.assertNotIn("核查概览", resp.text)
+
+    def test_trio_size_limit_enforced(self):
+        big_vcf = (TRIO_HEADER + "F\n").encode() + b"#\n" * (MAX_VCF_BYTES // 2)
+        resp = trio_upload(father=big_vcf)
+        self.assertEqual(resp.status_code, 422)
+        self.assertIn("超过大小上限", resp.text)
+
+    def test_trio_api_happy_path(self):
+        resp = client.post(
+            "/api/trio/check",
+            files={
+                "fasta": ("ref.fa", FASTA, "text/plain"),
+                "vcf_father": ("father.vcf", FATHER, "text/plain"),
+                "vcf_mother": ("mother.vcf", MOTHER, "text/plain"),
+                "vcf_child": ("child.vcf", CHILD, "text/plain"),
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["min_switches"], 1)
+        self.assertEqual(
+            data["samples"],
+            {"father": "FATHER", "mother": "MOTHER", "child": "CHILD"},
+        )
+        self.assertEqual(len(data["sites"]), 2)
+        self.assertEqual(
+            data["intervals"],
+            [{"pos_a": 2, "pos_b": 3, "maternal": "never", "paternal": "must"}],
+        )
+        # 位点明细保留原始 GT 与 PS
+        self.assertEqual(data["sites"][0]["child"]["gt"], "1|0")
+        self.assertEqual(data["sites"][0]["child"]["ps"], "33")
+
+    def test_trio_api_failure(self):
+        resp = client.post(
+            "/api/trio/check",
+            files={
+                "fasta": ("ref.fa", FASTA, "text/plain"),
+                "vcf_father": ("father.vcf", FATHER, "text/plain"),
+                "vcf_mother": ("mother.vcf", trio_vcf("M", ["chrT\t2\t.\tG\tT\t.\tPASS\t.\tGT:PS\t0|1:22"]), "text/plain"),
+                "vcf_child": ("child.vcf", CHILD, "text/plain"),
+            },
+        )
+        self.assertEqual(resp.status_code, 422)
+        self.assertFalse(resp.json()["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()

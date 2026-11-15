@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}核查结果 · 家系分相核查{% endblock %}
+{% block page_title %}家系分相核查{% endblock %}
+{% block page_subtitle %}父、母、子三份分相 VCF，寻找亲本单倍型切换最少的继承路径{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>核查概览</h2>
+  <div class="meta">
+    <span class="pill">参考：{{ ref_name }}（{{ ref_length }} bp）</span>
+    <span class="pill">父本样本：{{ sample_father }}</span>
+    <span class="pill">母本样本：{{ sample_mother }}</span>
+    <span class="pill">子代样本：{{ sample_child }}</span>
+  </div>
+  <div class="summary">
+    <div class="stat"><div class="num">{{ result.min_switches }}</div><div class="lbl">最小切换总次数（母源 + 父源）</div></div>
+    <div class="stat"><div class="num">{{ result.sites|length }}</div><div class="lbl">纳入位点</div></div>
+    <div class="stat"><div class="num">{{ result.intervals|length }}</div><div class="lbl">相邻区间</div></div>
+    <div class="stat"><div class="num" style="color:var(--bad)">{{ stats.m_must + stats.p_must }}</div><div class="lbl">必然切换（母源 {{ stats.m_must }} / 父源 {{ stats.p_must }}）</div></div>
+    <div class="stat"><div class="num" style="color:var(--warn)">{{ stats.m_maybe + stats.p_maybe }}</div><div class="lbl">可能切换（母源 {{ stats.m_maybe }} / 父源 {{ stats.p_maybe }}）</div></div>
+  </div>
+  <p><a class="back" href="/trio">← 返回重新上传</a></p>
+</div>
+
+{% macro verdict(v) %}
+{% if v == "must" %}<span class="verdict v-must">必然发生</span>
+{% elif v == "maybe" %}<span class="verdict v-maybe">可能发生</span>
+{% else %}<span class="verdict v-never">不发生</span>{% endif %}
+{% endmacro %}
+
+<div class="card">
+  <h2>相邻位点区间的切换判定<span class="section-badge b-bad">{{ result.intervals|length }}</span></h2>
+  <p class="muted" style="margin-top:0;font-size:13.5px">
+    判定基于所有切换总数最少的继承路径：必然发生 = 每条最优路径都在此区间切换；
+    可能发生 = 部分最优路径在此区间切换（切换位置无法唯一确定，值得复查）；
+    不发生 = 没有任何最优路径在此区间切换。
+  </p>
+  {% if result.intervals %}
+  <table>
+    <thead>
+      <tr><th style="width:220px">相邻位点区间</th><th style="width:110px">间距</th><th>母源切换</th><th>父源切换</th></tr>
+    </thead>
+    <tbody>
+    {% for iv in result.intervals %}
+      <tr>
+        <td class="mono">POS {{ iv.pos_a }} → POS {{ iv.pos_b }}</td>
+        <td class="mono">{{ iv.pos_b - iv.pos_a }} bp</td>
+        <td>{{ verdict(iv.maternal) }}</td>
+        <td>{{ verdict(iv.paternal) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">纳入位点不足两个，没有相邻位点区间。</div>
+  {% endif %}
+</div>
+
+{% macro person_cell(rec, ref_base) %}
+{% if rec is none %}
+<span class="muted mono">{{ ref_base }}|{{ ref_base }}</span>
+<div class="raw">未记录，按参考纯合处理</div>
+{% else %}
+<span class="mono">{{ rec.ref }}&gt;{{ rec.alt }}&nbsp;{{ rec.gt }}</span>
+<div class="raw">第 {{ rec.line_no }} 行{% if rec.ps %} · PS={{ rec.ps }}{% endif %}</div>
+{% endif %}
+{% endmacro %}
+
+<div class="card">
+  <h2>位点明细<span class="section-badge b-ok">{{ result.sites|length }}</span></h2>
+  {% if result.sites %}
+  <table>
+    <thead>
+      <tr><th style="width:90px">POS</th><th style="width:70px">REF</th><th>父本</th><th>母本</th><th>子代（左=母源 / 右=父源）</th></tr>
+    </thead>
+    <tbody>
+    {% for site in result.sites %}
+      <tr>
+        <td class="mono">{{ site.pos }}</td>
+        <td class="mono">{{ site.ref }}</td>
+        <td>{{ person_cell(site.father, site.ref) }}</td>
+        <td>{{ person_cell(site.mother, site.ref) }}</td>
+        <td>{{ person_cell(site.child, site.ref) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">三份 VCF 都没有记录任何位点。</div>
+  {% endif %}
+</div>
+{% endblock %}

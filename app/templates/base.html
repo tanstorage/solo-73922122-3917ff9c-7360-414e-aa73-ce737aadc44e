@@ -17,6 +17,13 @@
       font: 15px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     }
     .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+    .topnav { display: flex; gap: 10px; margin-bottom: 18px; }
+    .topnav a {
+      color: var(--accent); text-decoration: none; font-weight: 600; font-size: 14px;
+      padding: 6px 14px; border-radius: 8px; background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .topnav a:hover { background: var(--accent-soft); }
     header h1 { margin: 0 0 4px; font-size: 26px; }
     header p { margin: 0 0 24px; color: var(--muted); }
     .card {
@@ -73,15 +80,23 @@
     .b-ok { background: var(--ok-soft); color: var(--ok); }
     .b-warn { background: var(--warn-soft); color: var(--warn); }
     .b-bad { background: var(--bad-soft); color: var(--bad); }
+    .verdict { display: inline-block; border-radius: 6px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+    .verdict.v-must { background: var(--bad-soft); color: var(--bad); }
+    .verdict.v-maybe { background: var(--warn-soft); color: var(--warn); }
+    .verdict.v-never { background: var(--ok-soft); color: var(--ok); }
     .empty { color: var(--muted); padding: 14px 4px; }
     a.back { color: var(--accent); text-decoration: none; font-weight: 600; }
   </style>
 </head>
 <body>
 <div class="wrap">
+  <nav class="topnav">
+    <a href="/">双 VCF 核对</a>
+    <a href="/trio">家系分相核查</a>
+  </nav>
   <header>
-    <h1>双 VCF 变异核对</h1>
-    <p>同一参考、同一样本，两套变异识别程序结果复查工具</p>
+    <h1>{% block page_title %}双 VCF 变异核对{% endblock %}</h1>
+    <p>{% block page_subtitle %}同一参考、同一样本，两套变异识别程序结果复查工具{% endblock %}</p>
   </header>
   {% block body %}{% endblock %}
 </div>

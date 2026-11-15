@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}家系分相核查{% endblock %}
+{% block page_title %}家系分相核查{% endblock %}
+{% block page_subtitle %}父、母、子三份分相 VCF，寻找亲本单倍型切换最少的继承路径{% endblock %}
+{% block body %}
+{% if error %}
+<div class="alert error">
+  核查失败：{{ error }}<br>
+  <span style="font-weight:400;font-size:13.5px">按要求本次不展示任何局部结论，请修正输入后重新上传。</span>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>上传文件</h2>
+  <form action="/trio/check" method="post" enctype="multipart/form-data">
+    <label class="field">
+      单条染色体参考 FASTA
+      <span class="hint">（纯 A/C/G/T，不超过 {{ fasta_limit_kib }} KiB）</span>
+      <input type="file" name="fasta" accept=".fa,.fasta,.fna,text/plain" required>
+    </label>
+    <label class="field">
+      父本 VCF（单样本、分相）
+      <span class="hint">（不超过 {{ vcf_limit_kib }} KiB）</span>
+      <input type="file" name="vcf_father" accept=".vcf,text/plain" required>
+    </label>
+    <label class="field">
+      母本 VCF（单样本、分相）
+      <span class="hint">（不超过 {{ vcf_limit_kib }} KiB）</span>
+      <input type="file" name="vcf_mother" accept=".vcf,text/plain" required>
+    </label>
+    <label class="field">
+      子代 VCF（单样本、分相；GT 左拷贝为母源、右拷贝为父源）
+      <span class="hint">（不超过 {{ vcf_limit_kib }} KiB）</span>
+      <input type="file" name="vcf_child" accept=".vcf,text/plain" required>
+    </label>
+    <button type="submit">开始核查</button>
+  </form>
+</div>
+
+<div class="card rules">
+  <h2 style="color:var(--ink)">接收与判定规则</h2>
+  <ul>
+    <li>仅接受<strong>单 ALT 的单碱基替换</strong>（REF、ALT 均为单个 A/C/G/T 碱基）；indel、多 ALT、MNV、符号化 ALT、REF 与 ALT 相同等一律判失败。</li>
+    <li>GT 必须为<strong>二倍体分相写法</strong>（<span class="mono">0|1</span>、<span class="mono">1|0</span>、<span class="mono">1|1</span>、<span class="mono">0|0</span>）；未分相 <span class="mono">/</span>、缺失 <span class="mono">.</span>、非二倍体均判失败。</li>
+    <li>同一文件内所有<strong>杂合记录</strong>（<span class="mono">0|1</span>、<span class="mono">1|0</span>）必须带有相同的 <strong>PS</strong>（相位集）；纯合记录不要求 PS。</li>
+    <li>每人每个位点（POS）<strong>至多一条记录</strong>；REF 与参考序列不符即失败。</li>
+    <li>子代 GT <strong>左拷贝视为母源、右拷贝视为父源</strong>；某人未记录的位点按参考纯合处理。</li>
+    <li>在所有满足孟德尔遗传的继承路径中，最小化<strong>母源 + 父源单倍型切换总次数</strong>；结果给出最小次数，并对每段相邻位点区间标注：必然发生（所有最优路径都切换）、可能发生（部分最优路径切换）、不发生（没有最优路径切换）。</li>
+    <li>任一位点子代等位无法来自对应亲本，或输入违反上述规则时，<strong>整次核查失败</strong>，不展示局部结论。</li>
+  </ul>
+</div>
+{% endblock %}

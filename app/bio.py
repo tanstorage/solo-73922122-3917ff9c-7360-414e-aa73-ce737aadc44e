@@ -253,7 +253,7 @@ def _parse_record(
         )
 
     # FORMAT/GT
-    if len(fields) == 8:
+    if len(fields) < 10:
         raise CheckError(f"第 {line_no} 行：缺少 FORMAT 与样本列，本工具要求单样本二倍体 GT。")
     fmt = fields[8]
     fmt_keys = fmt.split(":")
